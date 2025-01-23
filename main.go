@@ -27,7 +27,7 @@ type Task struct {
 	ID          int    `json:"id"`
 	Description string `json:"description"`
 	Duration    string `json:"duration"`
-	Status      string
+	Status      string `json:"status"`
 }
 
 func getMatchingColor(status string) string {
@@ -64,8 +64,19 @@ func printTasks(tasks []Task) {
 	}
 }
 
+func getTaskNotYetDone(tasks []Task) []Task {
+	tasksNotYeDone := []Task{}
+	for _, tasks := range tasks {
+		if tasks.Status != DONE {
+			tasksNotYeDone = append(tasksNotYeDone, tasks)
+		}
+	}
+
+	return tasksNotYeDone
+}
+
 func main() {
-	var allTask []Task
+	var allTasks []Task
 	filePath := flag.String("file", "./task.json", "Give the file path")
 	flag.Parse()
 
@@ -79,8 +90,8 @@ func main() {
 		log.Fatalf("Error while opening %s : %v", *filePath, err)
 	}
 
-	json.NewDecoder(file).Decode(&allTask)
+	json.NewDecoder(file).Decode(&allTasks)
 
-	printTasks(allTask)
+	printTasks(getTaskNotYetDone(allTasks))
 
 }
