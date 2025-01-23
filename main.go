@@ -61,7 +61,7 @@ func PrintTasks(tasks []Task) {
 	PrintHeader()
 	for _, task := range tasks {
 		PrintLine(strconv.Itoa(task.ID), task.Description, strconv.FormatInt(task.Duration, 10), ColorStatus(task.Status))
-		time.Sleep(time.Second)
+		time.Sleep(time.Nanosecond)
 	}
 }
 
@@ -106,13 +106,35 @@ func processTask(taskID int, taskList *[]Task, notifications chan string) {
 		}
 	}
 }
+func filterTaskBasedOnStatus(tasks []Task, status string) []Task {
+	tasksFiltered := []Task{}
+	for _, task := range tasks {
+		if task.Status == status {
+			tasksFiltered = append(tasksFiltered, task)
+		}
+	}
+	return tasksFiltered
+
+}
 
 func main() {
+	arguments := map[string]string{
+		"file":    "the file of the path",
+		"list":    "print the list of all tasks",
+		"num":     "use with -list to print a specific number of task",
+		"status":  "use to print task with specifi status. values are 1(not started) , 2(in progress), 3(done). Ex: -status=1",
+		"process": "use to process task that are not yet done",
+	}
 	wg := sync.WaitGroup{}
 	notifications := make(chan string)
 
 	var allTasks []Task
-	filePath := flag.String("file", "./task.json", "Give the file path")
+	filePath := flag.String("file", "./task.json", arguments["file"])
+	shouldList := flag.Bool("list", false, arguments["list"])
+	shouldProcessTasks := flag.Bool("process", false, arguments["list"])
+	numberOfLineToPrint := flag.Int("num", 0, arguments["num"])
+	status := flag.Int("status", 0, arguments["status"])
+
 	flag.Parse()
 
 	if *filePath == "" {
@@ -125,23 +147,57 @@ func main() {
 		log.Fatalf("Error while opening %s : %v", *filePath, err)
 	}
 
-	json.NewDecoder(file).Decode(&allTasks)
+	err = json.NewDecoder(file).Decode(&allTasks)
 
-	for _, task := range GetTaskNotYetDone(allTasks) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			processTask(task.ID, &allTasks, notifications)
-		}()
+	if err != nil {
+		log.Fatalf("Error while decoding %s : %v", *filePath, err)
 	}
 
-	go func() {
-		wg.Wait()
-		close(notifications)
-	}()
+	if *shouldList {
+		if *numberOfLineToPrint > 0 {
+			PrintTasks(allTasks[:*numberOfLineToPrint])
+			os.Exit(0)
+		}
+		PrintTasks(allTasks)
+		os.Exit(0)
+	}
 
-	for message := range notifications {
-		fmt.Println(message)
+	if *status != 0 {
+		var finalStatus string
+		switch *status {
+		case 1:
+			finalStatus = NOT_STARTED
+		case 2:
+			finalStatus = IN_PROGRESS
+		case 3:
+			finalStatus = DONE
+		default:
+			log.Fatal("status must be 1, 2, or 3 :  1=>not_started, 2=>in_progress, 3=>done")
+		}
+
+		tasks := filterTaskBasedOnStatus(allTasks, finalStatus)
+
+		PrintTasks(tasks)
+		os.Exit(0)
+	}
+
+	if *shouldProcessTasks {
+		for _, task := range GetTaskNotYetDone(allTasks) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				processTask(task.ID, &allTasks, notifications)
+			}()
+		}
+
+		go func() {
+			wg.Wait()
+			close(notifications)
+		}()
+
+		for message := range notifications {
+			fmt.Println(message)
+		}
 	}
 
 }
