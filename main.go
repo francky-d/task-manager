@@ -182,7 +182,14 @@ func main() {
 	}
 
 	if *shouldProcessTasks {
-		for _, task := range GetTaskNotYetDone(allTasks) {
+		tasksNotYeDone := GetTaskNotYetDone(allTasks)
+		if len(tasksNotYeDone) == 0 {
+			log.Fatal("No tasks to process")
+		}
+
+		for _, task := range tasksNotYeDone {
+			// TODO: use concurrency worker pull to process the tasks
+			//       for performance purpose
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
