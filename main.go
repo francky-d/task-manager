@@ -67,42 +67,42 @@ func PrintTasks(tasks []Task) {
 
 func GetTaskNotYetDone(tasks []Task) []Task {
 	tasksNotYeDone := []Task{}
-	for _, tasks := range tasks {
-		if tasks.Status != DONE {
-			tasksNotYeDone = append(tasksNotYeDone, tasks)
+	for _, task := range tasks {
+		if task.Status != DONE {
+			tasksNotYeDone = append(tasksNotYeDone, task)
 		}
 	}
 	return tasksNotYeDone
 }
 
-func NotifyTaskInProcessState(task Task) string {
-	return fmt.Sprintf("Task (%s%d%s) is being processed", YELLOW_BOLD, task.ID, ESCAPE_COLOR_END)
+func NotifyTaskInProcessState(task Task, workerID int) string {
+	return fmt.Sprintf("Task (%s%d%s) is being processed by worker %d", YELLOW_BOLD, task.ID, ESCAPE_COLOR_END, workerID)
 }
 
-func NotifyTaskIsDone(task Task) string {
-	return fmt.Sprintf("Task (%s%d%s) has been done in %ds", GREEN_BOLD, task.ID, ESCAPE_COLOR_END, task.Duration)
+func NotifyTaskIsDone(task Task, workerID int) string {
+	return fmt.Sprintf("Task (%s%d%s) has been done in %d(s) by worker %d", GREEN_BOLD, task.ID, ESCAPE_COLOR_END, task.Duration, workerID)
 }
 
-func updateTaskStatusInList(task Task, taskList *[]Task, index int, notifications chan string) {
+func updateTaskStatusInList(task Task, taskList *[]Task, index int, notifications chan string, workerID int) {
 	if task.Status == NOT_STARTED {
 		(*taskList)[index].Status = IN_PROGRESS
-		notifications <- NotifyTaskInProcessState(task)
+		notifications <- NotifyTaskInProcessState(task, workerID)
 		(*taskList)[index].Status = DONE
-		notifications <- NotifyTaskIsDone(task)
+		notifications <- NotifyTaskIsDone(task, workerID)
 
 	}
 
 	if task.Status == IN_PROGRESS {
 		time.Sleep(time.Duration(task.Duration) * time.Second)
 		(*taskList)[index].Status = DONE
-		notifications <- NotifyTaskIsDone(task)
+		notifications <- NotifyTaskIsDone(task, workerID)
 	}
 }
 
-func processTask(taskID int, taskList *[]Task, notifications chan string) {
+func processTask(taskID int, taskList *[]Task, notifications chan string, workerID int) {
 	for index, task := range *taskList {
 		if task.ID == taskID {
-			updateTaskStatusInList(task, taskList, index, notifications)
+			updateTaskStatusInList(task, taskList, index, notifications, workerID)
 		}
 	}
 }
@@ -131,7 +131,7 @@ func main() {
 	var allTasks []Task
 	filePath := flag.String("file", "./task.json", arguments["file"])
 	shouldList := flag.Bool("list", false, arguments["list"])
-	shouldProcessTasks := flag.Bool("process", false, arguments["list"])
+	shouldProcessTasks := flag.Bool("process", false, arguments["process"])
 	numberOfLineToPrint := flag.Int("num", 0, arguments["num"])
 	status := flag.Int("status", 0, arguments["status"])
 
@@ -146,6 +146,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error while opening %s : %v", *filePath, err)
 	}
+
+	defer file.Close()
 
 	err = json.NewDecoder(file).Decode(&allTasks)
 
@@ -183,18 +185,29 @@ func main() {
 
 	if *shouldProcessTasks {
 		tasksNotYeDone := GetTaskNotYetDone(allTasks)
+
 		if len(tasksNotYeDone) == 0 {
 			log.Fatal("No tasks to process")
 		}
 
+		taskDispatcher := make(chan int, len(tasksNotYeDone))
+		workers := 5
+
 		for _, task := range tasksNotYeDone {
-			// TODO: use concurrency worker pull to process the tasks
-			//       for performance purpose
+			taskDispatcher <- task.ID
+		}
+
+		close(taskDispatcher)
+
+		for i := 1; i <= workers; i++ {
 			wg.Add(1)
-			go func() {
+			go func(workerID int) {
 				defer wg.Done()
-				processTask(task.ID, &allTasks, notifications)
-			}()
+				//ProcessTaskUntilNoneRemain
+				for taskID := range taskDispatcher {
+					processTask(taskID, &allTasks, notifications, workerID)
+				}
+			}(i)
 		}
 
 		go func() {
