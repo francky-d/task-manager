@@ -31,6 +31,26 @@ type Task struct {
 	Status      string `json:"status"`
 }
 
+func (task Task) IsInProgress() bool {
+	return task.Status == IN_PROGRESS
+}
+
+func (task Task) IsNotStarted() bool {
+	return task.Status == NOT_STARTED
+}
+
+func (task Task) IsDone() bool {
+	return task.Status == DONE
+}
+
+func (task Task) IsNotYetDone() bool {
+	return task.Status != DONE
+}
+
+func (task *Task) UpdateStatusTo(newStatus string) {
+	task.Status = newStatus
+}
+
 func GetMatchingColor(status string) string {
 	switch status {
 	case NOT_STARTED:
@@ -66,16 +86,16 @@ func PrintTasks(tasks []Task) {
 }
 
 func GetTaskNotYetDone(tasks []Task) []Task {
-	tasksNotYeDone := []Task{}
+	tasksNotYetDone := []Task{}
 	for _, task := range tasks {
-		if task.Status != DONE {
-			tasksNotYeDone = append(tasksNotYeDone, task)
+		if task.IsNotYetDone() {
+			tasksNotYetDone = append(tasksNotYetDone, task)
 		}
 	}
-	return tasksNotYeDone
+	return tasksNotYetDone
 }
 
-func NotifyTaskInProcessState(task Task, workerID int) string {
+func NotifyTaskIsBeingProcessed(task Task, workerID int) string {
 	return fmt.Sprintf("Task (%s%d%s) is being processed by worker %d", YELLOW_BOLD, task.ID, ESCAPE_COLOR_END, workerID)
 }
 
@@ -84,19 +104,22 @@ func NotifyTaskIsDone(task Task, workerID int) string {
 }
 
 func updateTaskStatusInList(task Task, taskList *[]Task, index int, notifications chan string, workerID int) {
-	if task.Status == NOT_STARTED {
-		(*taskList)[index].Status = IN_PROGRESS
-		notifications <- NotifyTaskInProcessState(task, workerID)
-		(*taskList)[index].Status = DONE
+	if task.IsNotStarted() {
+		task.UpdateStatusTo(IN_PROGRESS)
+		notifications <- NotifyTaskIsBeingProcessed(task, workerID)
+
+		task.UpdateStatusTo(DONE)
 		notifications <- NotifyTaskIsDone(task, workerID)
 
 	}
 
-	if task.Status == IN_PROGRESS {
+	if task.IsInProgress() {
 		time.Sleep(time.Duration(task.Duration) * time.Second)
-		(*taskList)[index].Status = DONE
+		task.UpdateStatusTo(DONE)
 		notifications <- NotifyTaskIsDone(task, workerID)
 	}
+
+	(*taskList)[index] = task
 }
 
 func processTask(taskID int, taskList *[]Task, notifications chan string, workerID int) {
@@ -124,6 +147,7 @@ func main() {
 		"num":     "use with -list to print a specific number of task",
 		"status":  "use to print task with specifi status. values are 1(not started) , 2(in progress), 3(done). Ex: -status=1",
 		"process": "use to process task that are not yet done",
+		"workers": "use to process task that are not yet done. 5 by default",
 	}
 	wg := sync.WaitGroup{}
 	notifications := make(chan string)
@@ -134,6 +158,7 @@ func main() {
 	shouldProcessTasks := flag.Bool("process", false, arguments["process"])
 	numberOfLineToPrint := flag.Int("num", 0, arguments["num"])
 	status := flag.Int("status", 0, arguments["status"])
+	workers := flag.Int("workers", 5, arguments["workers"])
 
 	flag.Parse()
 
@@ -191,7 +216,6 @@ func main() {
 		}
 
 		taskDispatcher := make(chan int, len(tasksNotYeDone))
-		workers := 5
 
 		for _, task := range tasksNotYeDone {
 			taskDispatcher <- task.ID
@@ -199,7 +223,7 @@ func main() {
 
 		close(taskDispatcher)
 
-		for i := 1; i <= workers; i++ {
+		for i := 1; i <= *workers; i++ {
 			wg.Add(1)
 			go func(workerID int) {
 				defer wg.Done()
