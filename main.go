@@ -129,6 +129,7 @@ func processTask(taskID int, taskList *[]Task, notifications chan string, worker
 		}
 	}
 }
+
 func filterTaskBasedOnStatus(tasks []Task, status string) []Task {
 	tasksFiltered := []Task{}
 	for _, task := range tasks {
@@ -140,7 +141,7 @@ func filterTaskBasedOnStatus(tasks []Task, status string) []Task {
 
 }
 
-func main() {
+func parseArgumentsFromFlags() (*string, *bool, *bool, *int, *int, *int) {
 	arguments := map[string]string{
 		"file":    "the file of the path",
 		"list":    "print the list of all tasks",
@@ -149,10 +150,7 @@ func main() {
 		"process": "use to process task that are not yet done",
 		"workers": "use to process task that are not yet done. 5 by default",
 	}
-	wg := sync.WaitGroup{}
-	notifications := make(chan string)
 
-	var allTasks []Task
 	filePath := flag.String("file", "./task.json", arguments["file"])
 	shouldList := flag.Bool("list", false, arguments["list"])
 	shouldProcessTasks := flag.Bool("process", false, arguments["process"])
@@ -161,6 +159,12 @@ func main() {
 	workers := flag.Int("workers", 5, arguments["workers"])
 
 	flag.Parse()
+
+	return filePath, shouldList, shouldProcessTasks, numberOfLineToPrint, status, workers
+}
+
+func getTasksFromFile(filePath *string) []Task {
+	var allTasks []Task
 
 	if *filePath == "" {
 		log.Fatalf("Please provide the file path")
@@ -180,68 +184,92 @@ func main() {
 		log.Fatalf("Error while decoding %s : %v", *filePath, err)
 	}
 
-	if *shouldList {
-		if *numberOfLineToPrint > 0 {
-			PrintTasks(allTasks[:*numberOfLineToPrint])
-			os.Exit(0)
-		}
-		PrintTasks(allTasks)
+	return allTasks
+}
+
+func startProcessingTasks(allTasks *[]Task, workers *int) {
+	wg := sync.WaitGroup{}
+	notifications := make(chan string)
+
+	tasksNotYeDone := GetTaskNotYetDone(*allTasks)
+
+	if len(tasksNotYeDone) == 0 {
+		log.Fatal("No tasks to process")
+	}
+
+	taskDispatcher := make(chan int, len(tasksNotYeDone))
+
+	for _, task := range tasksNotYeDone {
+		taskDispatcher <- task.ID
+	}
+
+	close(taskDispatcher)
+
+	for i := 1; i <= *workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			//ProcessTaskUntilNoneRemain
+			for taskID := range taskDispatcher {
+				processTask(taskID, allTasks, notifications, workerID)
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(notifications)
+	}()
+
+	for message := range notifications {
+		fmt.Println(message)
+	}
+
+	os.Exit(0)
+}
+
+func filterTasks(allTasks []Task, status *int) {
+	var finalStatus string
+	switch *status {
+	case 1:
+		finalStatus = NOT_STARTED
+	case 2:
+		finalStatus = IN_PROGRESS
+	case 3:
+		finalStatus = DONE
+	default:
+		log.Fatal("status must be 1, 2, or 3 :  1=>not_started, 2=>in_progress, 3=>done")
+	}
+
+	tasks := filterTaskBasedOnStatus(allTasks, finalStatus)
+
+	PrintTasks(tasks)
+	os.Exit(0)
+}
+
+func listTasks(allTasks []Task, numberOfLineToPrint *int) {
+	if *numberOfLineToPrint > 0 {
+		PrintTasks(allTasks[:*numberOfLineToPrint])
 		os.Exit(0)
+	}
+	PrintTasks(allTasks)
+	os.Exit(0)
+}
+
+func main() {
+	filePath, shouldList, shouldProcessTasks, numberOfLineToPrint, status, workers := parseArgumentsFromFlags()
+
+	allTasks := getTasksFromFile(filePath)
+
+	if *shouldList {
+		listTasks(allTasks, numberOfLineToPrint)
 	}
 
 	if *status != 0 {
-		var finalStatus string
-		switch *status {
-		case 1:
-			finalStatus = NOT_STARTED
-		case 2:
-			finalStatus = IN_PROGRESS
-		case 3:
-			finalStatus = DONE
-		default:
-			log.Fatal("status must be 1, 2, or 3 :  1=>not_started, 2=>in_progress, 3=>done")
-		}
-
-		tasks := filterTaskBasedOnStatus(allTasks, finalStatus)
-
-		PrintTasks(tasks)
-		os.Exit(0)
+		filterTasks(allTasks, status)
 	}
 
 	if *shouldProcessTasks {
-		tasksNotYeDone := GetTaskNotYetDone(allTasks)
-
-		if len(tasksNotYeDone) == 0 {
-			log.Fatal("No tasks to process")
-		}
-
-		taskDispatcher := make(chan int, len(tasksNotYeDone))
-
-		for _, task := range tasksNotYeDone {
-			taskDispatcher <- task.ID
-		}
-
-		close(taskDispatcher)
-
-		for i := 1; i <= *workers; i++ {
-			wg.Add(1)
-			go func(workerID int) {
-				defer wg.Done()
-				//ProcessTaskUntilNoneRemain
-				for taskID := range taskDispatcher {
-					processTask(taskID, &allTasks, notifications, workerID)
-				}
-			}(i)
-		}
-
-		go func() {
-			wg.Wait()
-			close(notifications)
-		}()
-
-		for message := range notifications {
-			fmt.Println(message)
-		}
+		startProcessingTasks(&allTasks, workers)
 	}
-
 }
