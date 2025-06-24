@@ -1,0 +1,11 @@
+
+services:
+  task-manager:
+    container_name: task-manager
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8080:8080
+    volumes:
+      - ./:/app
