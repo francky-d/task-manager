@@ -17,34 +17,43 @@ Each task in the JSON file has the following properties:
 - `Status`: Current state of the task (not_started, in_progress, done)
 
 ## Installation
-You must have Go installed on your machine. 
+You must have  `docker` and `docker compose` on your machine
 
-### Build the Program
+### Run with Docker Compose
+Build and start the app using Docker Compose:
 ```bash
-go build main.go
+docker compose up -d
 ```
+
+#### Build and Run Inside the Container
+After starting the service, you can build with the command :
+```bash
+docker compose exec task-manager go build main.go
+```
+
+This will create an executable inside the container `task-manager`
 
 ## Usage
 
-### Basic Commands
+### Basic Commands (Docker)
 ```bash
 # View all available commands and options
-./main -help
+docker compose exec task-manager ./main -help
 
 # List all tasks
-./main -list
+docker compose exec task-manager ./main -list
 
 # List specific number of tasks
-./main -list -num=5
+docker compose exec task-manager ./main -list -num=5
 
 # Filter tasks by status
-./main -status=1  # not_started tasks
-./main -status=2  # in_progress tasks
-./main -status=3  # done tasks
+docker compose exec task-manager ./main -status=1  # not_started tasks
+docker compose exec task-manager ./main -status=2  # in_progress tasks
+docker compose exec task-manager ./main -status=3  # done tasks
 
 # Process tasks
-./main -process           # Process with default 5 workers
-./main -process -workers=3  # Process with 3 workers
+docker compose exec task-manager ./main -process           # Process with default 5 workers
+docker compose exec task-manager ./main -process -workers=3  # Process with 3 workers
 ```
 
 ### Command Options
@@ -76,19 +85,19 @@ Create a task.json file in the following format:
 
 ## Examples
 
-### List First 3 Tasks
+### List First 3 Tasks 
 ```bash
-./main -list -num=3
+docker compose exec task-manager ./main -list -num=3
 ```
 
-### Process Tasks with 2 Workers
+### Process Tasks with 2 Workers 
 ```bash
-./main -process -workers=2
+docker compose exec task-manager ./main -process -workers=2
 ```
 
-### View Tasks with "Done" Status
+### View Tasks with "Done" Status 
 ```bash
-./main -status=3
+docker compose exec task-manager ./main -status=3
 ```
 
 ## Output Colors
